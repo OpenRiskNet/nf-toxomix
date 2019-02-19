@@ -60,7 +60,10 @@ if (params.help){
 // Configurable variables
 params.name = false
 params.transcriptomics_data = "ftp://ftp.ncbi.nlm.nih.gov/geo/series/GSE28nnn/GSE28878/matrix/GSE28878_series_matrix.txt.gz"
+
 params.compound_info_excel = "$baseDir/data/Supplementary_Data_1.xls"
+params.PMAtable_217_arrays = "$baseDir/data/PMAtable_217_arrays.tsv"
+
 params.multiqc_config = "$baseDir/conf/multiqc_config.yaml"
 params.reads = 'data/*_{1,2}.fq'
 params.fasta = "data/l1000_transcripts.fa"
@@ -97,6 +100,7 @@ Channel
     .fromFilePairs( params.reads, size: -1 )
     .ifEmpty { exit 1, "Cannot find any reads matching: ${params.reads}\nNB: Path needs to be enclosed in quotes!\nNB: Path requires at least one * wildcard!\nIf this is single-end data, please specify --singleEnd on the command line." }
     .into { read_files_fastqc; read_files_quantify }
+
 
 
 // Header log info
@@ -330,57 +334,120 @@ process calculate_log2_ratio {
 
     script:
     """
-        #!/opt/conda/bin/python
-        import pandas as pd
-        #print("transcriptomics file is: " + str(${transcriptomics_data}))
-        #print("treatment2solvent file is: " + str(${solvent2expose}))
-        transcr_df = pd.read_table(filepath_or_buffer="${transcriptomics_data}")
-        solvent2exposure_df = pd.read_table(filepath_or_buffer = "${solvent2expose}")
-        # Find corresponding solvent ids for each compound
-        results_df = pd.DataFrame()
-        for val in solvent2exposure_df.series_id.drop_duplicates().values:
-            tmp = solvent2exposure_df.loc[solvent2exposure_df.series_id==val,:].query("compound.str.lower() in ['dmso','etoh','pbs']")
-            tmp.index=range(tmp.shape[0])          
-            tmp.columns = ['solvent_'+str(i) for i in tmp.columns]
-            compounds = solvent2exposure_df.loc[solvent2exposure_df.series_id==val,:].query("compound.str.lower() not in ['dmso','etoh','pbs']")['compound'].drop_duplicates()
-            for compound in compounds:
-                tmp1 = solvent2exposure_df.loc[solvent2exposure_df.series_id==val,:].query("compound=='"+str(compound)+"'")
-                tmp1.index = range(tmp1.shape[0])                
-                tmp2 = pd.concat([tmp1,tmp],axis=1, join='inner')
-                if results_df.shape[0] == 0:
-                    results_df = tmp2
-                else:
-                    results_df = results_df.append(tmp2)
-        results_df.to_csv(path_or_buf=str("solvent2exposure_mapping.txt"), sep="\\t", index=False)
-        # Calculate log2ratio
-        log2ratio_df = pd.DataFrame()
-        for compound in results_df['compound'].drop_duplicates().values:
-            for replicate in results_df[results_df['compound']==compound].replicate:
-                compound_array = results_df[results_df['compound']==compound].query('replicate=='+str(replicate)).array_name.values[0]
-                solvent_array  = results_df[results_df['compound']==compound].query('replicate=='+str(replicate)).solvent_array_name.values[0]
-                tmp3 = transcr_df.loc[:,compound_array] - transcr_df.loc[:,solvent_array]
-                tmp3.index = transcr_df.index
-                tmp3.columns = [compound_array]
-                if log2ratio_df.shape[0] == 0:
-                    log2ratio_df = tmp3
-                    log2ratio_df.columns = tmp3.columns
-                    log2ratio_df.index = tmp3.index
-                else:
-                    column_names = list(log2ratio_df.columns)
-                    column_names.append(compound_array)
-                    log2ratio_df = pd.concat([log2ratio_df,tmp3],axis=1)
-                    log2ratio_df.columns = column_names
-        column_names = list(log2ratio_df.columns)
-        column_names.insert(0,'ID_REF')
-        log2ratio_df = pd.concat([transcr_df['ID_REF'],log2ratio_df], axis=1)
-        log2ratio_df.columns = column_names
-        log2ratio_df.to_csv(path_or_buf=str("log2ratio_results.txt"), sep="\\t", index=False)
+    #!/opt/conda/bin/python
+    import pandas as pd
+
+    transcr_df = pd.read_table(filepath_or_buffer="${transcriptomics_data}")
+    solvent2exposure_df = pd.read_table(filepath_or_buffer = "${solvent2expose}")
+
+    # Find corresponding solvent ids for each compound
+    results_df = pd.DataFrame()
+    for val in solvent2exposure_df.series_id.drop_duplicates().values:
+        tmp = solvent2exposure_df.loc[solvent2exposure_df.series_id==val,:].query("compound.str.lower() in ['dmso','etoh','pbs']")
+        tmp.index=range(tmp.shape[0])          
+        tmp.columns = ['solvent_'+str(i) for i in tmp.columns]
+        compounds = solvent2exposure_df.loc[solvent2exposure_df.series_id==val,:].query("compound.str.lower() not in ['dmso','etoh','pbs']")['compound'].drop_duplicates()
+        for compound in compounds:
+            tmp1 = solvent2exposure_df.loc[solvent2exposure_df.series_id==val,:].query("compound=='"+str(compound)+"'")
+            tmp1.index = range(tmp1.shape[0])                
+            tmp2 = pd.concat([tmp1,tmp],axis=1, join='inner')
+            if results_df.shape[0] == 0:
+                results_df = tmp2
+            else:
+                results_df = results_df.append(tmp2)
+    results_df.to_csv(path_or_buf=str("solvent2exposure_mapping.txt"), sep="\\t", index=False)
+
+    # Calculate log2ratio
+    log2ratio_df = pd.DataFrame()
+    for compound in results_df['compound'].drop_duplicates().values:
+        for replicate in results_df[results_df['compound']==compound].replicate:
+            compound_array = results_df[results_df['compound']==compound].query('replicate=='+str(replicate)).array_name.values[0]
+            solvent_array  = results_df[results_df['compound']==compound].query('replicate=='+str(replicate)).solvent_array_name.values[0]
+            tmp3 = transcr_df.loc[:,compound_array] - transcr_df.loc[:,solvent_array]
+            tmp3.index = transcr_df.index
+            tmp3.columns = [compound_array]
+            if log2ratio_df.shape[0] == 0:
+                log2ratio_df = tmp3
+                log2ratio_df.columns = tmp3.columns
+                log2ratio_df.index = tmp3.index
+            else:
+                column_names = list(log2ratio_df.columns)
+                column_names.append(compound_array)
+                log2ratio_df = pd.concat([log2ratio_df,tmp3],axis=1)
+                log2ratio_df.columns = column_names
+
+    column_names = list(log2ratio_df.columns)
+    column_names.insert(0,'ID_REF')
+    log2ratio_df = pd.concat([transcr_df['ID_REF'],log2ratio_df], axis=1)
+    log2ratio_df.columns = column_names
+    log2ratio_df.to_csv(path_or_buf=str("log2ratio_results.txt"), sep="\\t", index=False)
     """
  
-    
-
-
 }
+
+
+process filter_absent_genes {
+    input:
+        file PMAtable_217_arrays from Channel.fromPath(params.PMAtable_217_arrays)
+        file log2ratio_results from log2ratio_results_ch
+        file solvent2exposure_mapping from solvent2exposure_mapping_ch
+
+    output:
+        file "filtered_pma_table" into filtered_pma_table_ch
+        file "filtered_log2ratio" into filtered_log2ratio_ch
+
+    shell:
+        """
+        /opt/conda/bin/python ${baseDir}/bin/presence_absence_pma_table.py ${PMAtable_217_arrays} \
+            ${solvent2exposure_mapping} \
+            "filtered_pma_table" \
+            ${log2ratio_results} \
+            "filtered_log2ratio"
+        """
+}
+
+process create_training_data {
+
+    // Create a training data, where 2nd row contains genotoxicity information
+
+    input:
+        file filtered_log2ratio from filtered_log2ratio_ch  
+        file compound_array_genotoxicity_train from compound_array_genotoxicity_train_ch
+
+    output:
+        file "training_data.tsv" into training_data_ch
+
+    script:
+    """
+    #!/opt/conda/bin/python
+    import pandas as pd
+    log2ratio_df = pd.read_table(filepath_or_buffer="${filtered_log2ratio}")
+    comp_arr_gtx_df = pd.read_table(filepath_or_buffer="${compound_array_genotoxicity_train}")
+    arrays_ids = log2ratio_df.columns.values
+    gtx_info = {}
+    gtx_array_names = comp_arr_gtx_df.loc[:,'array_name'].values
+    for arr in arrays_ids[1:]:
+        if not arr in gtx_array_names: continue
+        print(arr)
+        tmp = comp_arr_gtx_df.loc[comp_arr_gtx_df['array_name']==arr,'genotoxicity']
+        if len(tmp)==1:
+            gtx_info[arr]= tmp.values[0]
+    gtx_info_cols = list(gtx_info.keys())
+    gtx_info_cols.sort()
+    gtx_info_classes = [gtx_info[i] for i in gtx_info_cols]
+    gtx_info_cols.insert(0,arrays_ids[0])
+    gtx_info_classes.insert(0,"class")
+    training_data_df = pd.DataFrame([gtx_info_classes],columns=gtx_info_cols)
+    training_data_df = training_data_df.append(log2ratio_df.loc[:,gtx_info_cols])
+        
+    # For later reading in R, do not give a label for the first column
+    col_names = list(training_data_df.columns[1:])
+    col_names.insert(0,"")
+    training_data_df.to_csv(path_or_buf=str("training_data.tsv"),sep="\\t", index=False, header=col_names)
+    """
+}
+
+
 
 
 /*
