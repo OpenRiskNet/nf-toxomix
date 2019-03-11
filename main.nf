@@ -406,12 +406,16 @@ process filter_absent_genes {
         """
 }
 
+
+filtered_log2ratio_ch
+  .into { filtered_log2ratio_ch_1; filtered_log2ratio_ch_2 } 
+
 process create_training_data {
 
     // Create a training data, where 2nd row contains genotoxicity information
 
     input:
-        file filtered_log2ratio from filtered_log2ratio_ch  
+        file filtered_log2ratio from filtered_log2ratio_ch_1
         file compound_array_genotoxicity_train from compound_array_genotoxicity_train_ch
 
     output:
@@ -448,83 +452,42 @@ process create_training_data {
 }
 
 
+process create_validation_data {
 
+    // Create validation data, where 2nd row contains gen 
+    input:
+        file filtered_log2ratio from filtered_log2ratio_ch_2
+        file compound_array_genotoxicity_val from compound_array_genotoxicity_val_ch
 
-/*
- * Completion e-mail notification
- */
-workflow.onComplete {
+    output:
+        file "validation_data.tsv" into validation_data_ch
 
-    // Set up the e-mail variables
-    def subject = "[NF-toxomix] Successful: $workflow.runName"
-    if(!workflow.success){
-      subject = "[NF-toxomix] FAILED: $workflow.runName"
-    }
-    def email_fields = [:]
-    email_fields['version'] = version
-    email_fields['runName'] = custom_runName ?: workflow.runName
-    email_fields['success'] = workflow.success
-    email_fields['dateComplete'] = workflow.complete
-    email_fields['duration'] = workflow.duration
-    email_fields['exitStatus'] = workflow.exitStatus
-    email_fields['errorMessage'] = (workflow.errorMessage ?: 'None')
-    email_fields['errorReport'] = (workflow.errorReport ?: 'None')
-    email_fields['commandLine'] = workflow.commandLine
-    email_fields['projectDir'] = workflow.projectDir
-    email_fields['summary'] = summary
-    email_fields['summary']['Date Started'] = workflow.start
-    email_fields['summary']['Date Completed'] = workflow.complete
-    email_fields['summary']['Pipeline script file path'] = workflow.scriptFile
-    email_fields['summary']['Pipeline script hash ID'] = workflow.scriptId
-    if(workflow.repository) email_fields['summary']['Pipeline repository Git URL'] = workflow.repository
-    if(workflow.commitId) email_fields['summary']['Pipeline repository Git Commit'] = workflow.commitId
-    if(workflow.revision) email_fields['summary']['Pipeline Git branch/tag'] = workflow.revision
-    if(workflow.container) email_fields['summary']['Docker image'] = workflow.container
-    email_fields['software_versions'] = software_versions
-    email_fields['software_versions']['Nextflow Build'] = workflow.nextflow.build
-    email_fields['software_versions']['Nextflow Compile Timestamp'] = workflow.nextflow.timestamp
+    script:
+    """
+    #!/opt/conda/bin/python
+    import pandas as pd
+    log2ratio_df = pd.read_table(filepath_or_buffer="${filtered_log2ratio}")
+    comp_arr_gtx_df = pd.read_table(filepath_or_buffer="${compound_array_genotoxicity_val}")
+    arrays_ids = log2ratio_df.columns.values
+    gtx_info = {}
+    gtx_array_names = comp_arr_gtx_df.loc[:,'array_name'].values
+    for arr in arrays_ids[1:]:
+        if not arr in gtx_array_names: continue
+        print(arr)
+        tmp = comp_arr_gtx_df.loc[comp_arr_gtx_df['array_name']==arr,'genotoxicity']
+        if len(tmp)==1:
+            gtx_info[arr]= tmp.values[0]
+    gtx_info_cols = list(gtx_info.keys())
+    gtx_info_cols.sort()
+    gtx_info_classes = [gtx_info[i] for i in gtx_info_cols]
+    gtx_info_cols.insert(0,arrays_ids[0])
+    gtx_info_classes.insert(0,"class")
+    val_data_df = pd.DataFrame([gtx_info_classes],columns=gtx_info_cols)
+    val_data_df = val_data_df.append(log2ratio_df.loc[:,gtx_info_cols])
+    # For later reading in R, do not give a label for the first column
+    col_names = list(val_data_df.columns[1:])
+    col_names.insert(0,"")
 
-    // Render the TXT template
-    def engine = new groovy.text.GStringTemplateEngine()
-    def tf = new File("$baseDir/assets/email_template.txt")
-    def txt_template = engine.createTemplate(tf).make(email_fields)
-    def email_txt = txt_template.toString()
-
-    // Render the HTML template
-    def hf = new File("$baseDir/assets/email_template.html")
-    def html_template = engine.createTemplate(hf).make(email_fields)
-    def email_html = html_template.toString()
-
-    // Render the sendmail template
-    def smail_fields = [ email: params.email, subject: subject, email_txt: email_txt, email_html: email_html, baseDir: "$baseDir" ]
-    def sf = new File("$baseDir/assets/sendmail_template.txt")
-    def sendmail_template = engine.createTemplate(sf).make(smail_fields)
-    def sendmail_html = sendmail_template.toString()
-
-    // Send the HTML e-mail
-    if (params.email) {
-        try {
-          if( params.plaintext_email ){ throw GroovyException('Send plaintext e-mail, not HTML') }
-          // Try to send HTML e-mail using sendmail
-          [ 'sendmail', '-t' ].execute() << sendmail_html
-          log.info "[NF-toxomix] Sent summary e-mail to $params.email (sendmail)"
-        } catch (all) {
-          // Catch failures and try with plaintext
-          [ 'mail', '-s', subject, params.email ].execute() << email_txt
-          log.info "[NF-toxomix] Sent summary e-mail to $params.email (mail)"
-        }
-    }
-
-    // Write summary e-mail HTML to a file
-    def output_d = new File( "${params.outdir}/Documentation/" )
-    if( !output_d.exists() ) {
-      output_d.mkdirs()
-    }
-    def output_hf = new File( output_d, "pipeline_report.html" )
-    output_hf.withWriter { w -> w << email_html }
-    def output_tf = new File( output_d, "pipeline_report.txt" )
-    output_tf.withWriter { w -> w << email_txt }
-
-    log.info "[NF-toxomix] Pipeline Complete"
-
+    val_data_df.to_csv(path_or_buf=str("validation_data.tsv"),sep="\\t", index=False, header=col_names)
+    """
 }
