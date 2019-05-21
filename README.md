@@ -83,4 +83,5 @@ support from the OpenRiskNet consortium
 
 ### About
 OpenRiskNet is a 3 year project funded by the European Commission within Horizon2020 EINFRA-22-2016 Programme (Grant Agreement 731075; start date 1 December 2016).
-<img src="https://raw.githubusercontent.com/openrisknet/nf-toxomix/master/assets/EU-logo.png" width="400">
+
+<img src="https://raw.githubusercontent.com/openrisknet/nf-toxomix/master/assets/EU-logo.png" width="400" class="center">
