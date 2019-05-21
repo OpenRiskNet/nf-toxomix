@@ -1,5 +1,5 @@
 
-<img src="https://raw.githubusercontent.com/skptic/nf-toxomix/master/assets/orn_logo.png" width="400">
+<img src="https://raw.githubusercontent.com/openrisknet/nf-toxomix/master/assets/orn_logo.png" width="400">
 
 
 # nf-toxomix
@@ -8,8 +8,8 @@ A series of workflows for toxicology predictions based on transcriptomic profile
 This repository acts a pilot workflow as part of the [OpenRiskNet](https://openrisknet.org/) project with the goal to
 incorporate genomic data into the OpenRiskNet infrastructure.
 
-[![Build Status](https://travis-ci.org/skptic/NF-toxomix.svg?branch=master)](https://travis-ci.org/skptic/NF-toxomix)
-[![Nextflow](https://img.shields.io/badge/nextflow-%E2%89%A50.24.0-brightgreen.svg)](https://www.nextflow.io/)
+[![Build Status](https://travis-ci.org/evanfloden/NF-toxomix.svg?branch=master)](https://travis-ci.org/evanfloden/NF-toxomix)
+[![Nextflow](https://img.shields.io/badge/nextflow-%E2%89%A519.04.0-brightgreen.svg)](https://www.nextflow.io/)
 
 
 ## Introduction
@@ -83,4 +83,4 @@ support from the OpenRiskNet consortium
 
 ### About
 OpenRiskNet is a 3 year project funded by the European Commission within Horizon2020 EINFRA-22-2016 Programme (Grant Agreement 731075; start date 1 December 2016).
-<img src="https://raw.githubusercontent.com/skptic/nf-toxomix/master/assets/EU-logo.png" width="400">
+<img src="https://raw.githubusercontent.com/openrisknet/nf-toxomix/master/assets/EU-logo.png" width="400">
